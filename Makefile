@@ -17,4 +17,4 @@ linkedlist.o: linkedlist.c linkedlist.h
 	gcc -c -g -std=c99 -Wvla -Wall -fsanitize=address,undefined linkedlist.c
 
 clean:
-	rm -f *.o $(OUTPUT)
+	rm -f *.o $(OUTPUT) compare
