@@ -9,7 +9,7 @@
 #include "qA.h"
 #include "qB.h"
 #include "linkedlist.h"
-#include "filenode.h"
+#include "fNode.h"
 
 int readRegArgs(int argc, char *argv[], char* fileNameSuffix, queueB_t* fileQ, queueU_t* dirQ);
 int readOptionalArgs(int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix);
@@ -82,7 +82,7 @@ int main (int argc, char *argv[])
     startB(&dirQ);
 
     FileNode* WFDrepo = NULL;
-    initFile(WFDrepo);
+    startFNode(WFDrepo);
 
     int activeThreads = directoryThreads;
     void* retval = NULL;
@@ -475,7 +475,7 @@ int fileWFD(char* filepath, FileNode** WFDrepo) {
 
     calculateWFD(&head, wordCount);
 
-    insertFileNode(WFDrepo, &head, filepath, wordCount);
+    insertFNode(WFDrepo, &head, filepath, wordCount);
     free(filepath);
 
     return EXIT_SUCCESS;
