@@ -6,9 +6,8 @@
 #include <ctype.h>
 #include <math.h>
 #include <dirent.h>
-
-#include "queueU.h"
-#include "queueB.h"
+#include "qA.h"
+#include "qB.h"
 #include "linkedlist.h"
 #include "filenode.h"
 
