@@ -78,8 +78,8 @@ int main (int argc, char *argv[])
 
     queueB_t fileQ;
     queueU_t dirQ;
-    initB(&fileQ);
-    initU(&dirQ);
+    startA(&fileQ);
+    startB(&dirQ);
 
     FileNode* WFDrepo = NULL;
     initFile(WFDrepo);
@@ -140,8 +140,8 @@ int main (int argc, char *argv[])
         free(retval);
     }
 
-    destroyU(&dirQ);
-    destroyB(&fileQ);
+    destroyB(&dirQ);
+    destroyA(&fileQ);
 
     // freeing
     free(file_tids);
@@ -238,11 +238,11 @@ int readRegArgs (int argc, char *argv[], char* fileNameSuffix, queueB_t* fileQ, 
         }
         else if (isReg(argv[i]) == 0) {
             if (endsWith(argv[i], fileNameSuffix)) {
-                enqueueB(fileQ, argv[i]);
+                enqueueA(fileQ, argv[i]);
             }
         }
         else if (isDir(argv[i]) == 0) {
-            enqueueU(dirQ, argv[i]);
+            enqueueB(dirQ, argv[i]);
         }
     }
 
@@ -343,7 +343,7 @@ void* dirThread(void* argptr) {
             --(*activeThreads);
             if (*activeThreads <= 0) {
                 pthread_cond_broadcast(&dirQ->read_ready);
-                qcloseB(fileQ);
+                qcloseA(fileQ);
                 return retval;
             }
             while (dirQ->count > 0 || *activeThreads > 0) {
@@ -355,7 +355,7 @@ void* dirThread(void* argptr) {
         }
 
         char* dirPath;
-        dequeueU(dirQ, &dirPath);
+        dequeueB(dirQ, &dirPath);
         
         // add '/' at the end of path if it doesn't have it
         int end = strlen(dirPath) - 1;
@@ -425,7 +425,7 @@ void* fileThread(void* argptr) {
 
     while (fileQ->count > 0 || *activeThreads > 0) {
         char* filepath = NULL;
-        dequeueB(fileQ, &filepath);
+        dequeueA(fileQ, &filepath);
         if (filepath != NULL) {
             fileWFD(filepath, WFDrepo);
         }
