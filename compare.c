@@ -1,3 +1,7 @@
+#include "qA.h"
+#include "qB.h"
+#include "linkedlist.h"
+#include "fNode.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,13 +10,9 @@
 #include <ctype.h>
 #include <math.h>
 #include <dirent.h>
-#include "qA.h"
-#include "qB.h"
-#include "linkedlist.h"
-#include "fNode.h"
 
-int readRegArgs(int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* dirQ);
-int readOptionalArgs(int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix);
+int readArgs(int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* dirQ);
+int readOptArgs(int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix);
 int isReg(char* path);
 int isDir(char* path);
 int startsWith(char* str, char* prefix);
@@ -27,6 +27,41 @@ double calculateMeanFreq(Node* file1, Node* file2, char* word);
 double calculateKLD(Node* calcFile, Node* suppFile);
 double calculateJSD(Node* file1, Node* file2);
 int compareWordCount(const void* pair1, const void* pair2);
+
+
+int calculateWFD(Node** head, int wordCount) {
+    double totalFreq = 0;
+
+    Node* ptr = *head;
+    while (ptr != NULL) {
+        ptr->frequency = (ptr->count / (double) wordCount);
+        totalFreq += ptr->frequency;
+        ptr = ptr->next;
+    }
+
+    return EXIT_SUCCESS;
+}
+
+double calculateMeanFreq(Node* file1, Node* file2, char* word) {
+    return 0.5 * (freqWord(file1, word) + freqWord(file2, word));
+}
+
+double calculateKLD(Node* calcFile, Node* suppFile) {
+    double kldValue = 0;
+
+    Node* ptr = calcFile;
+    while (ptr != NULL) {
+        double meanFrequency = calculateMeanFreq(calcFile, suppFile, ptr->word);
+        kldValue += (ptr->frequency * log2(ptr->frequency / meanFrequency));
+        ptr = ptr->next;
+    }
+
+    return kldValue;
+}
+
+double calculateJSD(Node* file1, Node* file2) {
+    return sqrt(0.5 * calculateKLD(file1, file2) + 0.5 * calculateKLD(file2, file1));
+}
 
 typedef struct filepair {
     char* file1;
@@ -58,7 +93,6 @@ typedef struct analysis_arg {
 
 int main (int argc, char *argv[])
 {
-    // optional arguments
     int directoryThreads = 1;
     int fileThreads = 1;
     int analysisThreads = 1;
@@ -70,8 +104,7 @@ int main (int argc, char *argv[])
 
     int rc = EXIT_SUCCESS;
 
-    // PHASE 1: COLLECTION
-    rc = readOptionalArgs(argc, argv, &directoryThreads, &fileThreads, &analysisThreads, &fileNameSuffix);
+    rc = readOptArgs(argc, argv, &directoryThreads, &fileThreads, &analysisThreads, &fileNameSuffix);
     if (rc) {
         return rc;
     }
@@ -87,13 +120,12 @@ int main (int argc, char *argv[])
     int activeThreads = directoryThreads;
     void* retval = NULL;
 
-    readRegArgs(argc, argv, fileNameSuffix, &fileQ, &dirQ);
+    readArgs(argc, argv, fileNameSuffix, &fileQ, &dirQ);
 
-    // start dir threads
-    pthread_t* dir_tids = malloc(directoryThreads * sizeof(pthread_t)); // hold thread ids
-    d_arg* dir_args = malloc(directoryThreads * sizeof(d_arg)); // hold arguments
+    pthread_t* dir_tids = malloc(directoryThreads * sizeof(pthread_t)); 
+    d_arg* dir_args = malloc(directoryThreads * sizeof(d_arg)); 
     
-    // initialize all dir arguments
+
     for (int i = 0; i < directoryThreads; i++) {
         dir_args[i].dirQ = &dirQ;
         dir_args[i].fileQ = &fileQ;
@@ -101,29 +133,25 @@ int main (int argc, char *argv[])
         dir_args[i].suffix = fileNameSuffix;
     }
     
-    // start all dir threads
+
     for (int i = 0; i < directoryThreads; i++) {
         pthread_create(&dir_tids[i], NULL, dirThread, &dir_args[i]);
     }
 
-    // start file threads
-    pthread_t* file_tids = malloc(fileThreads * sizeof(pthread_t)); // hold thread ids
-    f_arg* file_args = malloc(fileThreads * sizeof(f_arg)); // hold arguments
+
+    pthread_t* file_tids = malloc(fileThreads * sizeof(pthread_t)); 
+    f_arg* file_args = malloc(fileThreads * sizeof(f_arg)); 
     
-    // initialize all file arguments
     for (int i = 0; i < fileThreads; i++) {
         file_args[i].fileQ = &fileQ;
         file_args[i].WFDrepo = &WFDrepo;
         file_args[i].activeThreads = &activeThreads;
     }
     
-    // start all file threads
     for (int i = 0; i < fileThreads; i++) {
         pthread_create(&file_tids[i], NULL, fileThread, &file_args[i]);
     }
 
-    // join file and directory threads
-    // wait for all threads to finish
     for (int i = 0; i < fileThreads; i++) {
         pthread_join(file_tids[i], &retval);
         if (*((int*)retval) == EXIT_FAILURE) {
@@ -143,13 +171,11 @@ int main (int argc, char *argv[])
     destroyB(&dirQ);
     destroyA(&fileQ);
 
-    // freeing
     free(file_tids);
     free(dir_tids);
     free(file_args);
     free(dir_args);
 
-    // PHASE 2: ANALYSIS
     int n = fileListLength(WFDrepo);
     if (n < 2) {
         perror("Less than 2 files found.");
@@ -178,11 +204,9 @@ int main (int argc, char *argv[])
     int extraFiles = combinations % analysisThreads;
     int distributedThusFar = 0;
 
-    // start analysis threads
-    pthread_t* analysis_tids = malloc(analysisThreads * sizeof(pthread_t)); // hold thread ids
-    a_arg* analysis_args = malloc(analysisThreads * sizeof(a_arg)); // hold arguments
+    pthread_t* analysis_tids = malloc(analysisThreads * sizeof(pthread_t)); 
+    a_arg* analysis_args = malloc(analysisThreads * sizeof(a_arg)); 
     
-    // initialize all arguments
     for (int i = 0; i < analysisThreads; i++) {
         analysis_args[i].pairs = pairs;
         analysis_args[i].numPairs = division;
@@ -195,7 +219,6 @@ int main (int argc, char *argv[])
     }
     
     
-    // start all threads
     for (int i = 0; i < analysisThreads; i++) {
         pthread_create(&analysis_tids[i], NULL, analysisThread, &analysis_args[i]);
     }
@@ -231,7 +254,7 @@ int compareWordCount(const void* pair1, const void* pair2) {
     return pairB->totalWordCount - pairA->totalWordCount;
 }
 
-int readRegArgs (int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* dirQ) {
+int readArgs (int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* dirQ) {
     for (int i = 1; i < argc; i++) {
         if (startsWith(argv[i], "-") == 0) {
             continue;
@@ -249,7 +272,7 @@ int readRegArgs (int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t
     return EXIT_SUCCESS;
 }
 
-int readOptionalArgs (int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix) {
+int readOptArgs (int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix) {
     for (int i = 1; i < argc; i++) {
         if (startsWith(argv[i], "-") == 0) {
             int len = strlen(argv[i]) - 1;
@@ -305,7 +328,7 @@ int isDir (char* path) {
         }
     }
     else {
-        return -1; // does not exist
+        return -1; 
     }
 
     return 1;
@@ -357,7 +380,6 @@ void* dirThread(void* argptr) {
         char* dirPath;
         dequeueB(dirQ, &dirPath);
         
-        // add '/' at the end of path if it doesn't have it
         int end = strlen(dirPath) - 1;
         if (dirPath[end] != '/') {
             int newLen = strlen(dirPath) + 2;
@@ -490,7 +512,6 @@ char** getFileWords(FILE* fp, int* wordCount) {
     int bufsize = 5;
 
     while ((c = fgetc(fp)) != EOF) {
-        // generate current word
         if (!isspace(c)) {
             if (!ispunct(c)) {
                 size_t len = strlen(buf);
@@ -502,7 +523,7 @@ char** getFileWords(FILE* fp, int* wordCount) {
                 buf[len] = '\0';
             }
         }
-        else { // insert word into list
+        else { 
             ++(*wordCount);
 
             int index = (*wordCount) - 1;
@@ -515,14 +536,12 @@ char** getFileWords(FILE* fp, int* wordCount) {
             strcpy(words[index], buf);
             strcat(words[index], "\0");
 
-            // clear out buffer
             buf = realloc(buf, 5);
             strcpy(buf, "\0");
             bufsize = 5;
         }
     }
 
-    // if file does not end with a new line
     if (strcmp(buf, "\0") != 0) {
         ++(*wordCount);
 
@@ -542,36 +561,3 @@ char** getFileWords(FILE* fp, int* wordCount) {
     return words;
 }
 
-int calculateWFD(Node** head, int wordCount) {
-    double totalFreq = 0;
-
-    Node* ptr = *head;
-    while (ptr != NULL) {
-        ptr->frequency = (ptr->count / (double) wordCount);
-        totalFreq += ptr->frequency;
-        ptr = ptr->next;
-    }
-
-    return EXIT_SUCCESS;
-}
-
-double calculateMeanFreq(Node* file1, Node* file2, char* word) {
-    return 0.5 * (freqWord(file1, word) + freqWord(file2, word));
-}
-
-double calculateKLD(Node* calcFile, Node* suppFile) {
-    double kldValue = 0;
-
-    Node* ptr = calcFile;
-    while (ptr != NULL) {
-        double meanFrequency = calculateMeanFreq(calcFile, suppFile, ptr->word);
-        kldValue += (ptr->frequency * log2(ptr->frequency / meanFrequency));
-        ptr = ptr->next;
-    }
-
-    return kldValue;
-}
-
-double calculateJSD(Node* file1, Node* file2) {
-    return sqrt(0.5 * calculateKLD(file1, file2) + 0.5 * calculateKLD(file2, file1));
-}
