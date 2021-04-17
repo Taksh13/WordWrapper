@@ -74,7 +74,7 @@ double freqWord(Node *head, char *word)
 }
 
 
-void freelist(Node *head)
+void freeList(Node *head)
 {
     Node *tempNode = head;
     while (head != NULL)
@@ -86,7 +86,7 @@ void freelist(Node *head)
     }
 }
 
-void printlist(Node *head)
+void printList(Node *head)
 {
     Node *ptr = head;
     while (ptr != NULL)
