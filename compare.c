@@ -15,21 +15,18 @@ int readArgs(int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* di
 int readOptArgs(int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix);
 int isReg(char* path);
 int isDir(char* path);
-int startsWith(char* str, char* prefix);
-int endsWith(char* str, char* suffix);
-void* fileThread(void *argptr);
-void* dirThread(void *argptr);
-void* analysisThread(void* argptr);
-int fileWFD(char* filepath, fNode** WFDrepo);
-char** getFileWords(FILE* fp, int* wordCount);
-int calculateWFD(Node** head, int wordCount);
-double calculateMeanFreq(Node* file1, Node* file2, char* word);
-double calculateKLD(Node* calcFile, Node* suppFile);
-double calculateJSD(Node* file1, Node* file2);
-int compareWordCount(const void* pair1, const void* pair2);
+int optArg(char* str, char* prefix);
+int lastChar(char* str, char* suffix);
+void* fThread(void *argptr);
+void* dThread(void *argptr);
+void* threadAnalysis(void* argptr);
+
+char** fRead(FILE* fp, int* wordCount);
+int cmpWdCount(const void* pair1, const void* pair2);
 
 
-int calculateWFD(Node** head, int wordCount) {
+int calcWFD(Node** head, int wordCount);
+int calcWFD(Node** head, int wordCount) {
     double totalFreq = 0;
 
     Node* ptr = *head;
@@ -42,16 +39,18 @@ int calculateWFD(Node** head, int wordCount) {
     return EXIT_SUCCESS;
 }
 
-double calculateMeanFreq(Node* file1, Node* file2, char* word) {
+double calcMeanFreq(Node* file1, Node* file2, char* word);
+double calcMeanFreq(Node* file1, Node* file2, char* word) {
     return 0.5 * (freqWord(file1, word) + freqWord(file2, word));
 }
 
-double calculateKLD(Node* calcFile, Node* suppFile) {
+double calcKLD(Node* calcFile, Node* suppFile);
+double calcKLD(Node* calcFile, Node* suppFile) {
     double kldValue = 0;
 
     Node* ptr = calcFile;
     while (ptr != NULL) {
-        double meanFrequency = calculateMeanFreq(calcFile, suppFile, ptr->word);
+        double meanFrequency = calcMeanFreq(calcFile, suppFile, ptr->word);
         kldValue += (ptr->frequency * log2(ptr->frequency / meanFrequency));
         ptr = ptr->next;
     }
@@ -59,8 +58,9 @@ double calculateKLD(Node* calcFile, Node* suppFile) {
     return kldValue;
 }
 
-double calculateJSD(Node* file1, Node* file2) {
-    return sqrt(0.5 * calculateKLD(file1, file2) + 0.5 * calculateKLD(file2, file1));
+double calcJSD(Node* file1, Node* file2);
+double calcJSD(Node* file1, Node* file2) {
+    return sqrt(0.5 * calcKLD(file1, file2) + 0.5 * calcKLD(file2, file1));
 }
 
 typedef struct filepair {
@@ -135,7 +135,7 @@ int main (int argc, char *argv[])
     
 
     for (int i = 0; i < directoryThreads; i++) {
-        pthread_create(&dir_tids[i], NULL, dirThread, &dir_args[i]);
+        pthread_create(&dir_tids[i], NULL, dThread, &dir_args[i]);
     }
 
 
@@ -149,7 +149,7 @@ int main (int argc, char *argv[])
     }
     
     for (int i = 0; i < fileThreads; i++) {
-        pthread_create(&file_tids[i], NULL, fileThread, &file_args[i]);
+        pthread_create(&file_tids[i], NULL, fThread, &file_args[i]);
     }
 
     for (int i = 0; i < fileThreads; i++) {
@@ -178,7 +178,7 @@ int main (int argc, char *argv[])
 
     int n = fileListLength(WFDrepo);
     if (n < 2) {
-        perror("Less than 2 files found.");
+        perror("Only one file found\n");
         return EXIT_FAILURE;
     }
 
@@ -220,7 +220,7 @@ int main (int argc, char *argv[])
     
     
     for (int i = 0; i < analysisThreads; i++) {
-        pthread_create(&analysis_tids[i], NULL, analysisThread, &analysis_args[i]);
+        pthread_create(&analysis_tids[i], NULL, threadAnalysis, &analysis_args[i]);
     }
 
     for (int i = 0; i < analysisThreads; i++) {
@@ -231,7 +231,7 @@ int main (int argc, char *argv[])
     free(analysis_tids);
     free(analysis_args);
 
-    qsort(pairs, combinations, sizeof(filepair*), compareWordCount);
+    qsort(pairs, combinations, sizeof(filepair*), cmpWdCount);
 
     for (int i = 0; i < combinations; i++) {
         printf("%f %s %s\n", pairs[i]->JSD, pairs[i]->file1, pairs[i]->file2);
@@ -245,7 +245,7 @@ int main (int argc, char *argv[])
     return rc;
 }
 
-int compareWordCount(const void* pair1, const void* pair2) {
+int cmpWdCount(const void* pair1, const void* pair2) {
     filepair** pairAPointer = (filepair**) (pair1);
     filepair** pairBPointer = (filepair**) (pair2);
     filepair* pairA = *pairAPointer;
@@ -256,11 +256,11 @@ int compareWordCount(const void* pair1, const void* pair2) {
 
 int readArgs (int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* dirQ) {
     for (int i = 1; i < argc; i++) {
-        if (startsWith(argv[i], "-") == 0) {
+        if (optArg(argv[i], "-") == 0) {
             continue;
         }
         else if (isReg(argv[i]) == 0) {
-            if (endsWith(argv[i], fileNameSuffix)) {
+            if (lastChar(argv[i], fileNameSuffix)) {
                 enqueueA(fileQ, argv[i]);
             }
         }
@@ -274,31 +274,31 @@ int readArgs (int argc, char *argv[], char* fileNameSuffix, qA_t* fileQ, qB_t* d
 
 int readOptArgs (int argc, char *argv[], int* directoryThreads, int* fileThreads, int* analysisThreads, char** fileNameSuffix) {
     for (int i = 1; i < argc; i++) {
-        if (startsWith(argv[i], "-") == 0) {
+        if (optArg(argv[i], "-") == 0) {
             int len = strlen(argv[i]) - 1;
             char* substring = malloc(len);
             memcpy(substring, argv[i] + 2, len);
             substring[len - 1] = '\0';
 
-            if (startsWith(argv[i], "-s") == 0) {
+            if (optArg(argv[i], "-s") == 0) {
                 int suffixLen = strlen(substring) + 1;
                 *fileNameSuffix = realloc(*fileNameSuffix, suffixLen);
                 strcpy(*fileNameSuffix, substring);
             }
-            else if (startsWith(argv[i], "-f") == 0) {
+            else if (optArg(argv[i], "-f") == 0) {
                 *fileThreads = atoi(substring);
             }
-            else if (startsWith(argv[i], "-d") == 0) {
+            else if (optArg(argv[i], "-d") == 0) {
                 *directoryThreads = atoi(substring);
             }
-            else if (startsWith(argv[i], "-a") == 0) {
+            else if (optArg(argv[i], "-a") == 0) {
                 *analysisThreads = atoi(substring);
             }
 
             free(substring);
         }
         else if (isReg(argv[i]) && isDir(argv[i])) {
-            perror("incorrect arguments");
+            perror("wrong args\n");
             return EXIT_FAILURE;
         }
     }
@@ -334,7 +334,7 @@ int isDir (char* path) {
     return 1;
 }
 
-int startsWith (char* str, char* prefix) {
+int optArg (char* str, char* prefix) {
     for (int i = 0; i < strlen(prefix); i++) {
         if (str[i] != prefix[i]) {
             return 1;
@@ -344,13 +344,13 @@ int startsWith (char* str, char* prefix) {
     return 0;
 }
 
-int endsWith (char* str, char* suffix) {
+int lastChar (char* str, char* suffix) {
     if (strlen(suffix) > strlen(str)) { return 0; }
 
     return !strcmp(str + strlen(str) - strlen(suffix), suffix);
 }
 
-void* dirThread(void* argptr) {
+void* dThread(void* argptr) {
     int* retval = malloc(sizeof(int));
     *retval = EXIT_SUCCESS;
 
@@ -397,7 +397,7 @@ void* dirThread(void* argptr) {
 
         parentDir = opendir(dirPath);
         if (!parentDir) {
-            perror("Failed to open directory!\n");
+            perror("cannot open dir\n");
             *retval = EXIT_FAILURE;
             free(dirPath);
             return retval;
@@ -418,7 +418,7 @@ void* dirThread(void* argptr) {
                 strcat(subpath, subpathname);
 
                 stat(subpath, &data);
-                if (isReg(subpath) == 0 && endsWith(subpath, suffix)) {
+                if (isReg(subpath) == 0 && lastChar(subpath, suffix)) {
                     enqueueA(fileQ, subpath);
                 }
                 else if (!isDir(subpath)) {
@@ -435,7 +435,37 @@ void* dirThread(void* argptr) {
     return retval;
 }
 
-void* fileThread(void* argptr) {
+int WFD(char* filepath, fNode** WFDrepo);
+int WFD(char* filepath, fNode** WFDrepo) {
+    Node* head = NULL;
+    startHead(head);
+
+    FILE* fp = fopen(filepath, "r");
+    if (fp == NULL) {
+        perror("cannot open file\n");
+        return EXIT_FAILURE;
+    }
+
+    int wordCount = 0;
+    char** words = fRead(fp, &wordCount);
+    for (int i = 0; i < wordCount; i++) {
+        addNode(&head, words[i]);
+    }
+
+    for (int i = 0; i < wordCount; i++) {
+        free(words[i]);
+    }
+    free(words);
+
+    calcWFD(&head, wordCount);
+
+    insertFNode(WFDrepo, &head, filepath, wordCount);
+    free(filepath);
+
+    return EXIT_SUCCESS;
+}
+
+void* fThread(void* argptr) {
     int* retval = malloc(sizeof(int));
     *retval = EXIT_SUCCESS;
 
@@ -449,14 +479,14 @@ void* fileThread(void* argptr) {
         char* filepath = NULL;
         dequeueA(fileQ, &filepath);
         if (filepath != NULL) {
-            fileWFD(filepath, WFDrepo);
+            WFD(filepath, WFDrepo);
         }
     }
 
     return retval;
 }
 
-void* analysisThread(void* argptr) {
+void* threadAnalysis(void* argptr) {
     int* retval = malloc(sizeof(int));
     *retval = EXIT_SUCCESS;
 
@@ -468,42 +498,14 @@ void* analysisThread(void* argptr) {
 
     for (int i = startIndex; i < numPairs + startIndex; i++) {
         filepair* pair = pairs[i];
-        pair->JSD = calculateJSD(pair->file1Head, pair->file2Head);
+        pair->JSD = calcJSD(pair->file1Head, pair->file2Head);
     }
 
     return retval;
 }
 
-int fileWFD(char* filepath, fNode** WFDrepo) {
-    Node* head = NULL;
-    startHead(head);
 
-    FILE* fp = fopen(filepath, "r");
-    if (fp == NULL) {
-        perror("file opening failure");
-        return EXIT_FAILURE;
-    }
-
-    int wordCount = 0;
-    char** words = getFileWords(fp, &wordCount);
-    for (int i = 0; i < wordCount; i++) {
-        addNode(&head, words[i]);
-    }
-
-    for (int i = 0; i < wordCount; i++) {
-        free(words[i]);
-    }
-    free(words);
-
-    calculateWFD(&head, wordCount);
-
-    insertFNode(WFDrepo, &head, filepath, wordCount);
-    free(filepath);
-
-    return EXIT_SUCCESS;
-}
-
-char** getFileWords(FILE* fp, int* wordCount) {
+char** fRead(FILE* fp, int* wordCount) {
     char** words = malloc(0);
 
     char c;
