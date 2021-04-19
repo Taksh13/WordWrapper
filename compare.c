@@ -1,3 +1,4 @@
+//sorry for the spaghetti code. Debugging the code messed up the entire structure.
 #include "qA.h"
 #include "qB.h"
 #include "linkedlist.h"
@@ -11,7 +12,6 @@
 #include <math.h>
 #include <dirent.h>
 
-
 int optArg(char *str, char *prefix)
 {
     for (int i = 0; i < strlen(prefix); i++)
@@ -24,6 +24,9 @@ int optArg(char *str, char *prefix)
 
     return 0;
 }
+
+char **fRead(FILE *fp, int *wordCount);
+int cmpWdCount(const void *pair1, const void *pair2);
 
 int lastChar(char *str, char *suffix)
 {
@@ -74,15 +77,6 @@ int isDir(char *path)
 int readArgs(int argc, char *argv[], char *fNameSuf, qA_t *f_Q, qB_t *d_Q);
 int readOptArgs(int argc, char *argv[], int *dir_Threads, int *f_Threads, int *a_Threads, char **fNameSuf);
 
-
-
-
-void *fThread(void *argptr);
-void *dThread(void *argptr);
-
-char **fRead(FILE *fp, int *wordCount);
-int cmpWdCount(const void *pair1, const void *pair2);
-
 int calcWFD(Node **head, int wordCount)
 {
     double totalFreq = 0;
@@ -123,6 +117,9 @@ double calcJSD(Node *file1, Node *file2)
     return sqrt(0.5 * calcKLD(file1, file2) + 0.5 * calcKLD(file2, file1));
 }
 
+void *fThread(void *argptr);
+void *dThread(void *argptr);
+
 int WFD(char *filepath, fNode **WFDrepo)
 {
     Node *head = NULL;
@@ -155,9 +152,6 @@ int WFD(char *filepath, fNode **WFDrepo)
 
     return EXIT_SUCCESS;
 }
-
-//void *threadAnalysis(void *argptr);
-
 
 typedef struct f_arg
 {
@@ -216,7 +210,6 @@ int main(int argc, char *argv[])
     int dir_Threads = 1;
     int f_Threads = 1;
     int a_Threads = 1;
-
     char *defSuf = ".txt";
     char *fNameSuf = malloc(sizeof(defSuf) + 1);
     memcpy(fNameSuf, defSuf, strlen(defSuf));
@@ -296,7 +289,6 @@ int main(int argc, char *argv[])
 
     destroyB(&d_Q);
     destroyA(&f_Q);
-
     free(file_tids);
     free(dir_tids);
     free(file_args);
@@ -454,11 +446,6 @@ int readOptArgs(int argc, char *argv[], int *dir_Threads, int *f_Threads, int *a
     return EXIT_SUCCESS;
 }
 
-
-
-
-
-
 void *dThread(void *argptr)
 {
     int *retval = malloc(sizeof(int));
@@ -556,8 +543,6 @@ void *dThread(void *argptr)
     return retval;
 }
 
-
-
 void *fThread(void *argptr)
 {
     int *retval = malloc(sizeof(int));
@@ -581,7 +566,6 @@ void *fThread(void *argptr)
 
     return retval;
 }
-
 
 char **fRead(FILE *fp, int *wordCount)
 {
